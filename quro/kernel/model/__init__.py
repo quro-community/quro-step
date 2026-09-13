@@ -1,6 +1,7 @@
 """Canonical Kernel object model (design doc §4, §35)."""
 
 from .artifact import Artifact, ArtifactPayload
+from .checkpoint import Checkpoint
 from .continuity import (
     DEFAULT_BRANCH,
     ExecutionContinuity,
@@ -22,6 +23,13 @@ from .history import (
     ToolTraceRecord,
 )
 from .ids import ArtifactId, BranchId, InstanceId, StepOccurrence, UnitId
+from .interpretation import (
+    CrossDomainInterpretation,
+    Fingerprint,
+    InterpretationIdentity,
+    StabilityContract,
+    UnknownInterpretation,
+)
 from .plan import ExecutionPlan
 from .position import PathSegment, SemanticPosition
 from .provenance import CausalRelation, Provenance, ProvenanceDetail, RelationKind
@@ -34,7 +42,9 @@ __all__ = [
     "ArtifactPayload",
     "BranchId",
     "CausalRelation",
+    "Checkpoint",
     "ConversationRecord",
+    "CrossDomainInterpretation",
     "DEFAULT_BRANCH",
     "Err",
     "ExecutionContinuity",
@@ -43,8 +53,10 @@ __all__ = [
     "ExecUnit",
     "Failure",
     "FailureReason",
+    "Fingerprint",
     "History",
     "InstanceId",
+    "InterpretationIdentity",
     "MountFailure",
     "MountFailureKind",
     "OccurrenceKey",
@@ -57,12 +69,14 @@ __all__ = [
     "Result",
     "SemanticPosition",
     "SemanticRecord",
+    "StabilityContract",
     "StateDomainPayload",
     "Step",
     "StepOccurrence",
     "ToolTraceRecord",
     "UnitId",
     "UnitKind",
+    "UnknownInterpretation",
     "UpdateFailure",
     "UpdateFailureKind",
     "err",

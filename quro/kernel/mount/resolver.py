@@ -1,110 +1,101 @@
-"""Position resolution against Continuity's branch-associated plan (§8, §10.6).
+"""Domain resolver boundary for the interpretation axis (E6).
 
-Resolution is *structural*, not merely data lookup::
+The Kernel requires the *shape* of resolution, never its content::
 
-    Continuity.resolveUnitAt(P)
-        -> plan associated with P.branch
-        -> walk P.path
-        -> resolve ExecUnit
+    resolve(identity) -> Reading | UnknownInterpretation | CrossDomainInterpretation
+    fingerprint(resolved) -> Fingerprint?    // only needed under `pinned`
 
-Semantic requirements enforced here (no more, no less)::
+Ownership is a boundary, not a convention (K-IC-04 / E13). The domain provides
+``reference resolution``; the Kernel provides ``execution reconstruction`` and
+``state continuity``; and the domain — never the Kernel — provides ``meaning
+judgement``, ``equivalence rules`` and ``interpretation semantics``.
 
-    correct Position
-    correct occurrence
-    correct branch
-    no substitution
-    no control selection
+Consistent with the project's own no-third-party-dependencies discipline, the
+Kernel does not *require* a Protocol implementation: it duck-types the resolver
+above and keeps the shipped default a plain callable. :class:`DomainResolver` is
+offered as an explicit, names-only protocol for domains that want the surface
+declared in one place.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, Protocol, runtime_checkable
 
-from ..model.failure import MountFailure, MountFailureKind
-from ..model.ids import InstanceId, UnitId
-from ..model.unit import ExecUnit
-from ..model.position import SemanticPosition
-from ..model.result import Err, Ok, Result
+from ..model.interpretation import InterpretationIdentity
 
-
-def _plan_for(continuity: Any, branch):
-    getter = getattr(continuity, "plan_for", None)
-    if getter is not None:
-        return getter(branch)
-    return getattr(continuity, "plan", None)
+#: ``identity -> reading``. The only capability the Kernel requires.
+ResolveFn = Callable[[InterpretationIdentity], Any]
 
 
-def _occurrence_known(continuity: Any, branch, unit: UnitId, instance: InstanceId) -> bool:
-    """Fail closed: a Continuity that cannot answer occurrence queries cannot
-    prove the occurrence exists, and an unprovable occurrence must not be
-    silently accepted (Law M2/M4)."""
-    checker = getattr(continuity, "occurrence_known", None)
-    if checker is None:
-        return False
-    return bool(checker(branch, unit, instance))
+@runtime_checkable
+class DomainResolver(Protocol):
+    """The declared surface of a domain-owned interpretation resolver."""
+
+    def resolve(self, identity: InterpretationIdentity) -> Any:
+        ...  # pragma: no cover - protocol
+
+    def fingerprint(self, resolved: Any) -> Any:
+        ...  # pragma: no cover - protocol
 
 
-def resolve_unit_at(
-    position: SemanticPosition, continuity: Any
-) -> "Result[ExecUnit, MountFailure]":
-    """Resolve the ExecUnit designated by ``position`` under ``continuity``.
+class MappingResolver:
+    """Reference resolver over a fixed ``identity -> reading`` mapping.
 
-    Never falls back to a nearest/first-child/other-occurrence Position. An
-    unresolved Position is an explicit ``MountFailure`` (Law M2 / K4). The
-    semantic Position model in the design docs' earlier draft allowed a
-    ``currentChildAt(pos) ?? firstChild(unit)`` default; the consolidated v0.2
-    architecture forbids that, and this implementation follows v0.2.
+    Deliberately *nominal*: lookup keys on ``(name, version)`` and nothing else,
+    so a registry that has drifted answers its old label without complaint. That
+    is not a defect — it is E8's measured default, and it is exactly why a
+    domain that needs more declares ``pinned`` (E9) and lets the fingerprint be
+    verified at mount time.
+
+    An unknown identity is *refused*, never substituted; a domain that also
+    wants `CrossDomainInterpretation` for a resolvable-but-foreign identity can
+    supply a :meth:`resolver` raising that instead.
     """
-    plan = _plan_for(continuity, position.branch)
-    if plan is None:
-        return Err(
-            MountFailure(
-                kind=MountFailureKind.UNKNOWN_BRANCH,
-                position=position,
-                detail=f"no ExecutionPlan is associated with branch {position.branch.name!r}",
-            )
-        )
 
-    root = plan.root_unit
-    if root is None:
-        return Err(
-            MountFailure(
-                kind=MountFailureKind.UNRESOLVED_UNIT,
-                position=position,
-                detail=f"plan root {str(plan.root)!r} is not defined in the plan",
-            )
-        )
+    def __init__(self, resolved: "dict[str, Any] | None" = None) -> None:
+        self._resolved = {str(key): value for key, value in (resolved or {}).items()}
 
-    current: ExecUnit = root
-    for index, segment in enumerate(position.path):
-        child = plan.child_of(current, segment.unit) if current.is_composite else None
-        if child is None:
-            return Err(
-                MountFailure(
-                    kind=MountFailureKind.UNRESOLVED_UNIT,
-                    position=position,
-                    detail=(
-                        f"path segment {index} ({segment.unit}) is not a declared child "
-                        f"of {current.id}"
-                    ),
-                )
-            )
-        if not _occurrence_known(
-            continuity, position.branch, segment.unit, segment.instance
-        ):
-            return Err(
-                MountFailure(
-                    kind=MountFailureKind.UNKNOWN_OCCURRENCE,
-                    position=position,
-                    detail=(
-                        f"occurrence {segment.unit}{segment.instance} is not recorded "
-                        f"on branch {position.branch.name!r}"
-                    ),
-                )
-            )
-        current = child
+    def with_resolution(self, identity: "str | InterpretationIdentity", resolved: Any) -> "MappingResolver":
+        key = InterpretationIdentity.of(identity).label
+        table = dict(self._resolved)
+        table[key] = resolved
+        return MappingResolver(table)
 
-    return Ok(current)
+    def labels(self) -> "tuple[str, ...]":
+        return tuple(sorted(self._resolved))
+
+    def resolve(self, identity: InterpretationIdentity) -> Any:
+        from ..model.interpretation import UnknownInterpretation
+
+        try:
+            return self._resolved[InterpretationIdentity.of(identity).label]
+        except KeyError:
+            raise UnknownInterpretation(
+                f"resolver defines {self.labels()}, not {InterpretationIdentity.of(identity).label!r}"
+            ) from None
 
 
-__all__ = ["resolve_unit_at"]
+def resolver(reference: Any) -> "ResolveFn | None":
+    """Normalize ``reference`` into an ``identity -> reading`` callable."""
+    if reference is None:
+        return None
+    candidate = getattr(reference, "resolve", None)
+    if callable(candidate):
+        return candidate
+    if callable(reference):
+        return reference
+    return None
+
+
+def resolved_fingerprint(resolved: Any) -> Any:
+    """The resolved value's *domain-computed* fingerprint, or ``None``.
+
+    ``None`` is never "no claim": under a pinned contract an unverifiable
+    resolution is a drift failure (E9/E12).
+    """
+    return getattr(resolved, "content_fingerprint", None) or getattr(
+        resolved, "fingerprint", None
+    )
+
+
+__all__ = ["DomainResolver", "MappingResolver", "ResolveFn", "resolved_fingerprint", "resolver"]

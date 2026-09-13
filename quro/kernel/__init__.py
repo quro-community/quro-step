@@ -2,9 +2,9 @@
 
 Public surface::
 
-    Kernel.mount(position, continuity)        -> Result[ExecutionState, MountFailure]
-    Kernel.execute(state, unit)               -> Result[Artifact, Failure]
-    Kernel.update(continuity, artifact, prov) -> Result[ExecutionContinuity, UpdateFailure]
+    Kernel.mount(position, continuity, interpretation?) -> Result[ExecutionState, MountFailure]
+    Kernel.execute(state, unit)                          -> Result[Artifact, Failure]
+    Kernel.update(continuity, artifact, prov)            -> Result[ExecutionContinuity, UpdateFailure]
 
 Dependency direction (design doc §35)::
 
@@ -17,11 +17,26 @@ Reverse dependencies are forbidden: nothing in this package may import
 
 from .contract.conformance import (
     CONTROL_METHOD_NAMES,
+    JUDGEMENT_TOKENS,
     assert_facade_closed,
+    assert_interpretation_is_opaque,
+    assert_no_judgement_leakage,
+    assert_position_fidelity,
+    assert_recoverability_preserved,
     facade_is_closed,
     forbidden_control_methods,
+    judgement_leaks,
+    judgement_parameters,
 )
-from .contract.laws import ALL_LAWS, BOUNDARY_LAWS, MOUNT_LAWS, Law, all_laws, law
+from .contract.laws import (
+    ALL_LAWS,
+    BOUNDARY_LAWS,
+    INTERPRETATION_LAWS,
+    MOUNT_LAWS,
+    Law,
+    all_laws,
+    law,
+)
 from .continuity.recoverability import is_recoverable, lost_recoverability
 from .continuity.updater import ContinuityUpdater
 from .execution.executor import CallableExecutor, Executor, execute_into
@@ -32,7 +47,9 @@ from .model import (
     ArtifactPayload,
     BranchId,
     CausalRelation,
+    Checkpoint,
     ConversationRecord,
+    CrossDomainInterpretation,
     DEFAULT_BRANCH,
     Err,
     ExecutionContinuity,
@@ -41,8 +58,10 @@ from .model import (
     ExecUnit,
     Failure,
     FailureReason,
+    Fingerprint,
     History,
     InstanceId,
+    InterpretationIdentity,
     MountFailure,
     MountFailureKind,
     Ok,
@@ -54,12 +73,14 @@ from .model import (
     Result,
     SemanticPosition,
     SemanticRecord,
+    StabilityContract,
     StateDomainPayload,
     Step,
     StepOccurrence,
     ToolTraceRecord,
     UnitId,
     UnitKind,
+    UnknownInterpretation,
     UpdateFailure,
     UpdateFailureKind,
     err,
@@ -68,8 +89,10 @@ from .model import (
     ok,
     position_of,
 )
+from .mount.interpretation import check_stability, resolve_interpretation
 from .mount.mounter import Mounter
-from .mount.resolver import resolve_unit_at
+from .mount.resolver import DomainResolver, MappingResolver, resolver
+from .mount.structural import resolve_unit_at
 
 __all__ = [
     "ALL_LAWS",
@@ -79,11 +102,16 @@ __all__ = [
     "BOUNDARY_LAWS",
     "BranchId",
     "CONTROL_METHOD_NAMES",
+    "INTERPRETATION_LAWS",
+    "JUDGEMENT_TOKENS",
     "CallableExecutor",
     "CausalRelation",
+    "Checkpoint",
     "ContinuityUpdater",
     "ConversationRecord",
+    "CrossDomainInterpretation",
     "DEFAULT_BRANCH",
+    "DomainResolver",
     "Err",
     "ExecutionContinuity",
     "ExecutionPlan",
@@ -92,11 +120,14 @@ __all__ = [
     "Executor",
     "Failure",
     "FailureReason",
+    "Fingerprint",
     "History",
     "InstanceId",
+    "InterpretationIdentity",
     "Kernel",
     "Law",
     "MOUNT_LAWS",
+    "MappingResolver",
     "MountFailure",
     "MountFailureKind",
     "Mounter",
@@ -109,16 +140,23 @@ __all__ = [
     "Result",
     "SemanticPosition",
     "SemanticRecord",
+    "StabilityContract",
     "StateDomainPayload",
     "Step",
     "StepOccurrence",
     "ToolTraceRecord",
     "UnitId",
     "UnitKind",
+    "UnknownInterpretation",
     "UpdateFailure",
     "UpdateFailureKind",
     "all_laws",
     "assert_facade_closed",
+    "assert_interpretation_is_opaque",
+    "assert_no_judgement_leakage",
+    "assert_position_fidelity",
+    "assert_recoverability_preserved",
+    "check_stability",
     "err",
     "execute_into",
     "facade_is_closed",
@@ -126,9 +164,14 @@ __all__ = [
     "is_err",
     "is_ok",
     "is_recoverable",
+    "judgement_leaks",
+    "judgement_parameters",
     "law",
     "lost_recoverability",
     "ok",
     "position_of",
+    "resolve_interpretation",
     "resolve_unit_at",
+    "resolved_fingerprint",
+    "resolver",
 ]

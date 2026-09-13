@@ -18,16 +18,27 @@ from types import MappingProxyType
 from typing import Any, Mapping, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .interpretation import Fingerprint
     from .position import SemanticPosition
 
 
 class MountFailureKind(str, Enum):
-    """Why a declared Position could not be materialized (§10.4)."""
+    """Why a declared Position could not be materialized (§10.4, E6, E9).
+
+    The first four are structural-resolution refusals; the last four are
+    interpretation-axis refusals. All eight are refusals, never substitutions
+    (M2 / Lemma 5).
+    """
 
     UNKNOWN_BRANCH = "unknown-branch"
     UNRESOLVED_UNIT = "unresolved-unit"
     UNKNOWN_OCCURRENCE = "unknown-occurrence"
     INVALID_POSITION = "invalid-position"
+    # --- interpretation axis (E6 / E9) ----------------------------------
+    INTERPRETATION_REQUIRED = "interpretation-required"
+    UNKNOWN_INTERPRETATION = "unknown-interpretation"
+    CROSS_DOMAIN_INTERPRETATION = "cross-domain-interpretation"
+    INTERPRETATION_DRIFT = "interpretation-drift"
 
 
 @dataclass(frozen=True)
@@ -35,15 +46,47 @@ class MountFailure:
     """Explicit failure to materialize a declared Position.
 
     The implementation must never silently substitute a nearest Position, first
-    child, fallback child, another branch or another occurrence (M2 / §10.4).
+    child, fallback child, another branch, another occurrence (M2 / §10.4) or a
+    compatible-looking interpretation default (E6c / K16).
+
+    ``expected``/``actual`` carry the two fingerprints of an
+    ``InterpretationDrift`` (E9); they are ``None`` for every other kind.
     """
 
     kind: MountFailureKind
     position: "SemanticPosition | None" = None
     detail: str = ""
+    expected: "Fingerprint | None" = None
+    actual: "Fingerprint | None" = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", MountFailureKind(self.kind))
+
+    @classmethod
+    def interpretation_required(cls, position: "SemanticPosition | None" = None) -> "MountFailure":
+        return cls(
+            kind=MountFailureKind.INTERPRETATION_REQUIRED,
+            position=position,
+            detail="no interpretation was supplied and no default was declared",
+        )
+
+    @classmethod
+    def interpretation_drift(
+        cls,
+        position: "SemanticPosition | None",
+        expected: "Fingerprint | str",
+        actual: "Fingerprint | str",
+    ) -> "MountFailure":
+        from .interpretation import Fingerprint
+
+        expected_fp, actual_fp = Fingerprint.of(expected), Fingerprint.of(actual)
+        return cls(
+            kind=MountFailureKind.INTERPRETATION_DRIFT,
+            position=position,
+            detail=f"pinned {expected_fp} but the environment resolves {actual_fp}",
+            expected=expected_fp,
+            actual=actual_fp,
+        )
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         where = f" at {self.position}" if self.position is not None else ""

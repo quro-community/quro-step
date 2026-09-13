@@ -1,16 +1,20 @@
-"""Canonical public Kernel API (design doc §18).
+"""Canonical public Kernel API (design doc §18, E6).
 
 Deliberately small::
 
     interface Kernel {
-        mount(position, continuity) -> Result[ExecutionState, MountFailure]
-        execute(state, unit)        -> Result[Artifact, Failure]
-        update(continuity, artifact, provenance) -> Result[ExecutionContinuity, UpdateFailure]
+        mount(position, continuity, interpretation?) -> Result[ExecutionState, MountFailure]
+        execute(state, unit)                          -> Result[Artifact, Failure]
+        update(continuity, artifact, provenance)      -> Result[ExecutionContinuity, UpdateFailure]
     }
 
 There is intentionally no ``next``, ``steer``, ``retry``, ``backtrack``,
-``replan``, ``compact``, ``fork`` or ``fold`` on the facade. The Kernel
-executes; the enclosing Control layer selects continuation (§19).
+``replan``, ``compact``, ``fork`` or ``fold`` on the facade — and, by Law E13,
+no equivalence or judgement operator either: identity resolution, fingerprint
+verification and semantic judgement are three permanently separate questions,
+and the facade may not grow an operator that tries to answer another layer's
+question. The Kernel executes; the enclosing Control layer selects continuation
+(§19).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from ..continuity.updater import ContinuityUpdater
 from ..execution.executor import Executor
 from ..model.artifact import Artifact
 from ..model.failure import Failure, MountFailure, UpdateFailure
+from ..model.interpretation import InterpretationIdentity
 from ..model.unit import ExecUnit
 from ..model.position import SemanticPosition
 from ..model.provenance import Provenance
@@ -44,10 +49,19 @@ class Kernel:
 
     # -- boundary 1: mount ------------------------------------------------
     def mount(
-        self, position: SemanticPosition, continuity: Any
+        self,
+        position: SemanticPosition,
+        continuity: Any,
+        interpretation: "InterpretationIdentity | str | None" = None,
     ) -> "Result[ExecutionState, MountFailure]":
-        """Materialize an ExecutionState from a declared Position and Continuity."""
-        return self._mounter.mount(position, continuity)
+        """Materialize an ExecutionState from a declared Position and Continuity.
+
+        ``interpretation`` is optional and additive: omitted, mount resolves the
+        interpretation declared on the Position's Checkpoint (or the continuity
+        default) and refuses explicitly when neither exists. Passing it makes the
+        reading an explicit third declared input, exactly as ``Position`` is.
+        """
+        return self._mounter.mount(position, continuity, interpretation)
 
     # -- boundary 2: execute ----------------------------------------------
     def execute(

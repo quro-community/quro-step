@@ -3,9 +3,10 @@
 Canonical minimal shape::
 
     ExecutionState = {
-        position:      SemanticPosition,   // closed Kernel field
-        unit:          ExecUnit,           // closed Kernel field
-        domainPayload: StateDomainPayload  // isolated extension slot
+        position:       SemanticPosition,        // closed Kernel field
+        unit:           ExecUnit,                // closed Kernel field
+        interpretation: InterpretationIdentity,  // closed Kernel field (E6)
+        domainPayload:  StateDomainPayload       // isolated extension slot
     }
 
 Law ::
@@ -16,6 +17,12 @@ Law ::
 It is *derived*, never an independently persisted second source of truth
 (§9.4). Law E1 — Domain Payload Non-Interference: ``domainPayload`` must not
 encode Position substitution, next-Position choice or outer control decisions.
+
+The ``interpretation`` field is the named, explicit third input to ``mount``,
+carried into the mounted state (E6). It is *not* an equivalence verdict: two
+states may carry the same identity and mean different things, or different
+identities and mean the same thing (E11). Determinism (M3/M5) is defined *per
+fixed* interpretation, not across interpretations (E6e).
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .interpretation import InterpretationIdentity
 from .unit import ExecUnit
 from .position import SemanticPosition
 
@@ -50,7 +58,14 @@ class ExecutionState:
 
     position: SemanticPosition
     unit: ExecUnit
+    interpretation: "InterpretationIdentity | None" = None
     domain_payload: StateDomainPayload = field(default_factory=StateDomainPayload)
+
+    def __post_init__(self) -> None:
+        if self.interpretation is not None:
+            object.__setattr__(
+                self, "interpretation", InterpretationIdentity.of(self.interpretation)
+            )
 
     @property
     def position_of(self) -> SemanticPosition:
@@ -63,6 +78,8 @@ class ExecutionState:
         position: SemanticPosition,
         unit: ExecUnit,
         payload: "StateDomainPayload | Mapping[str, Any] | None" = None,
+        *,
+        interpretation: "InterpretationIdentity | str | None" = None,
     ) -> "ExecutionState":
         if payload is None:
             domain = StateDomainPayload()
@@ -70,7 +87,16 @@ class ExecutionState:
             domain = payload
         else:
             domain = StateDomainPayload(data=dict(payload))
-        return cls(position=position, unit=unit, domain_payload=domain)
+        return cls(
+            position=position,
+            unit=unit,
+            interpretation=(
+                InterpretationIdentity.of(interpretation)
+                if interpretation is not None
+                else None
+            ),
+            domain_payload=domain,
+        )
 
 
 def position_of(state: ExecutionState) -> SemanticPosition:
