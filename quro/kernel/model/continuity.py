@@ -30,7 +30,11 @@ from .artifact import Artifact
 from .checkpoint import Checkpoint
 from .history import History, SemanticRecord
 from .ids import DEFAULT_BRANCH, BranchId, InstanceId, UnitId
-from .interpretation import InterpretationIdentity, UnknownInterpretation
+from .interpretation import (
+    INTERPRETATION_REQUIREMENTS,
+    InterpretationIdentity,
+    UnknownInterpretation,
+)
 from .plan import ExecutionPlan
 from .position import SemanticPosition
 from .provenance import Provenance
@@ -66,6 +70,17 @@ class ExecutionContinuity:
     #: allocation) the way E6d requires a declared interpretation to survive
     #: ``update``.
     interpretation_resolver: "Any | None" = None
+    #: G1 — the declared boundary between "additive" (E6) and "must refuse"
+    #: (E6a). ``"legacy-exempt"`` means an undeclared reading is the single-
+    #: reading legacy case (no identity, never a fabricated one);
+    #: ``"must-declare"`` means an undeclared reading is refused explicitly
+    #: (``MountFailure(InterpretationRequired)``).
+    #:
+    #: ``None`` (the default) preserves the pre-Closure-0 behaviour exactly —
+    #: the ``_declares_any`` heuristic — so a continuity that does not opt in is
+    #: unchanged. The classification is a *declaration*, not a Kernel judgement:
+    #: the Kernel never decides which domains are exempt (Closure 0 §8).
+    interpretation_requirement: "str | None" = None
     history: History = field(default_factory=History)
     artifacts: "tuple[Artifact, ...]" = ()
 
@@ -117,6 +132,14 @@ class ExecutionContinuity:
             )
         if self.domain is not None:
             object.__setattr__(self, "domain", str(self.domain))
+        if self.interpretation_requirement is not None:
+            requirement = str(self.interpretation_requirement)
+            if requirement not in INTERPRETATION_REQUIREMENTS:
+                raise ValueError(
+                    "interpretation_requirement must be one of "
+                    f"{INTERPRETATION_REQUIREMENTS} or None, not {requirement!r}"
+                )
+            object.__setattr__(self, "interpretation_requirement", requirement)
         object.__setattr__(self, "artifacts", tuple(self.artifacts))
 
     # ------------------------------------------------------------------
@@ -131,6 +154,7 @@ class ExecutionContinuity:
         domain: "str | None" = None,
         default_interpretation: "InterpretationIdentity | str | None" = None,
         interpretation_resolver: "Any | None" = None,
+        interpretation_requirement: "str | None" = None,
     ) -> "ExecutionContinuity":
         """A fresh continuity, optionally already referencing a branch plan.
 
@@ -138,6 +162,10 @@ class ExecutionContinuity:
         interpretation environment (E6): a domain may name itself so a foreign
         interpretation is refused explicitly (K16), and it may declare the
         reading its recoverable Positions default to.
+
+        ``interpretation_requirement`` is G1's declared classification
+        (``"legacy-exempt"`` / ``"must-declare"``). ``None`` keeps the pre-G1
+        heuristic default, so an existing caller is unaffected.
         """
         continuity = cls(
             domain=domain,
@@ -147,6 +175,7 @@ class ExecutionContinuity:
                 else None
             ),
             interpretation_resolver=interpretation_resolver,
+            interpretation_requirement=interpretation_requirement,
         )
         if plan is not None:
             continuity = continuity.with_plan(branch, plan)

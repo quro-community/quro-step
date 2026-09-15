@@ -25,6 +25,15 @@ from .interpretation import check_stability, resolve_interpretation
 from .structural import resolve_unit_at
 from .validation import validate_position
 
+#: G6 — the attribute a domain-owned ``project`` sets to *declare* how it is
+#: parameterised. When present it is the contract: the Kernel calls the
+#: projection exactly as declared. When absent, the Kernel falls back to
+#: signature sniffing — the documented legacy path, never the contract.
+DECLARED_PARAMETERS_ATTR = "declared_parameters"
+
+#: G6 — the closed vocabulary of parameters a ``project`` may declare.
+DECLARABLE_PARAMETERS = ("position", "interpretation", "resolved")
+
 
 def _project_payload(
     continuity: Any,
@@ -72,12 +81,41 @@ def _project_with_declaration(
     *,
     resolved: Any = None,
 ) -> Any:
-    """Call a ``project`` that declares interpretation parameters.
+    """Call a ``project`` that declares how it is parameterised (**G6**).
 
-    A domain may act on the identity alone, or on the value the domain itself
-    resolved from it. Discovery is by declared parameters only — the Kernel never
-    injects a judgement, and a ``project`` declaring neither is called exactly as
-    before.
+    A domain-owned projection may *declare* which parameters it accepts by
+    setting ``declared_parameters`` on the callable — a tuple (or
+    comma-separated string) drawn from ``("position", "interpretation",
+    "resolved")``. When a declaration is present it **is** the contract: the
+    Kernel calls the projection exactly as declared and never inspects the
+    signature.
+
+    When nothing is declared the Kernel falls back to signature sniffing —
+    the documented **legacy path**, not the contract. This keeps E6 additive for
+    existing single-parameter domains while giving every new domain a way to
+    state its intent rather than have it inferred.
+    """
+    declared = _declared_call_parameters(project)
+    if declared is not None:
+        provided = {"position": position, "interpretation": identity, "resolved": resolved}
+        positional = [provided[name] for name in declared if name == "position"]
+        keywords = {name: provided[name] for name in declared if name != "position"}
+        return project(*positional, **keywords)
+    return _sniff_projected(project, position, identity, resolved)
+
+
+def _sniff_projected(
+    project: Any,
+    position: SemanticPosition,
+    identity: InterpretationIdentity,
+    resolved: Any = None,
+) -> Any:
+    """Legacy fallback (pre-G6): infer the shape from the signature.
+
+    Retained so an undeclared ``project`` keeps working unchanged. A domain that
+    wants a *guaranteed* call shape declares it (see
+    ``_declared_call_parameters``); sniffing is never the documented
+    contract.
     """
     import inspect
 
@@ -101,6 +139,35 @@ def _project_with_declaration(
     if "interpretation" in parameters:
         return project(position, interpretation=identity)
     return project(position)
+
+
+def _declared_call_parameters(project: Any) -> "tuple[str, ...] | None":
+    """The declared projection parameters, or ``None`` when none is declared.
+
+    A declaration naming anything outside the closed vocabulary is a domain
+    error and is reported, never silently ignored or downgraded to inference —
+    the contract *is* the declaration (G6).
+    """
+    declared = getattr(project, DECLARED_PARAMETERS_ATTR, None)
+    if declared is None:
+        return None
+    if callable(declared):
+        declared = declared()
+    if isinstance(declared, str):
+        declared = tuple(part.strip() for part in declared.split(",") if part.strip())
+    try:
+        names = tuple(str(name) for name in declared)
+    except TypeError as exc:
+        raise TypeError(
+            f"{DECLARED_PARAMETERS_ATTR} must name parameters, not {declared!r}"
+        ) from exc
+    unknown = [name for name in names if name not in DECLARABLE_PARAMETERS]
+    if unknown:
+        raise ValueError(
+            f"{DECLARED_PARAMETERS_ATTR} names unknown parameters {unknown}; "
+            f"expected a subset of {DECLARABLE_PARAMETERS}"
+        )
+    return names
 
 
 def _resolve_identity(

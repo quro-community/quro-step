@@ -7,6 +7,8 @@ exactly three things:
    the domain resolver to resolve it. The Kernel never interprets identity as
    meaning, and never falls back to an ambient default when nothing was
    declared: an unresolved reference is ``MountFailure(InterpretationRequired)``.
+   The resolution order is a declared chain, not a per-implementation default
+   (**G3**, ``INTERPRETATION_RESOLUTION_CHAIN``).
 2. **verification (E9)** — if the addressed Checkpoint declares
    ``stabilityContract = pinned``, ask the domain registry for the fingerprint of
    what it resolved and compare. A mismatch is
@@ -17,6 +19,13 @@ exactly three things:
 Law E12's boundary is load-bearing here: a fingerprint verifies exactly what it
 was computed over, never semantic equivalence. Law E13's boundary is enforced by
 absence: there is no equivalence operator to call.
+
+**G1** (Closure 0) names the boundary between E6's *additive* promise and E6a's
+*must refuse* requirement. A continuity that declares nothing is either a legacy
+single-reading domain (``"legacy-exempt"`` → no identity) or a domain that must
+declare (``"must-declare"`` → explicit refusal). The classification is a declared
+field on the continuity; ``None`` preserves the pre-G1 heuristic, now demoted to
+*the implementation of the default* rather than the contract itself.
 """
 
 from __future__ import annotations
@@ -26,6 +35,8 @@ from typing import Any
 from ..model.checkpoint import Checkpoint
 from ..model.failure import MountFailure, MountFailureKind
 from ..model.interpretation import (
+    LEGACY_EXEMPT,
+    MUST_DECLARE,
     CrossDomainInterpretation,
     Fingerprint,
     InterpretationIdentity,
@@ -33,6 +44,18 @@ from ..model.interpretation import (
 )
 from ..model.position import SemanticPosition
 from ..model.result import Err, Ok, Result
+
+#: G3 — the *declared* resolution order for an interpretation. The Kernel
+#: consults these sources in order and refuses explicitly when none answers; an
+#: interior or root Position resolves through this same chain (falling to the
+#: continuity-wide default, then to refusal), never through an undocumented
+#: per-implementation default.
+INTERPRETATION_RESOLUTION_CHAIN: "tuple[str, ...]" = (
+    "mount-argument",
+    "declared-checkpoint",
+    "continuity-default",
+    "refuse",
+)
 
 
 def resolve_interpretation(
@@ -42,34 +65,69 @@ def resolve_interpretation(
 ) -> "Result[InterpretationIdentity, MountFailure]":
     """Choose the declared reference to resolve, or refuse explicitly (E6a).
 
-    Resolution order::
+    Resolution order (declared — **G3**, ``INTERPRETATION_RESOLUTION_CHAIN``)::
 
         1. the identity passed to mount
         2. the identity declared on the Checkpoint at this Position
         3. the continuity-wide declared default
         4. MountFailure(InterpretationRequired) — never an ambient fallback
 
-    A Continuity that declares no interpretation environment at all is the
-    single-reading legacy case; it resolves to *no* identity rather than to a
-    fabricated one, so nothing in the Kernel can mistake a missing declaration
-    for a resolved interpretation.
+    **G1** decides what step 4 means for a continuity that declares *nothing*: a
+    ``"legacy-exempt"`` continuity resolves to *no* identity (the single-reading
+    legacy case — never a fabricated one); a ``"must-declare"`` continuity is
+    refused explicitly. An unclassified continuity keeps the pre-G1 heuristic,
+    which is exempt exactly when it names no domain and carries no Checkpoint.
     """
     if interpretation is not None:
         return Ok(InterpretationIdentity.of(interpretation))
 
+    declared = _declared_interpretation(position, continuity)
+    if declared is not None:
+        return Ok(declared)
+
+    requirement = getattr(continuity, "interpretation_requirement", None)
+    if requirement == MUST_DECLARE:
+        # G1 — the domain has declared that an undeclared reading is a refusal;
+        # the heuristic exemption is *not* consulted even where it would exempt.
+        return Err(MountFailure.interpretation_required(position))
+    if requirement == LEGACY_EXEMPT:
+        # G1 — the domain has declared the legacy single-reading case: no
+        # identity, never a fabricated one.
+        return Ok(None)  # type: ignore[return-value]
+    # Default: preserve the pre-G1 behaviour exactly. The heuristic below is now
+    # explicitly the *implementation of the default*, not the contract.
+    if _is_legacy_exempt(continuity):
+        return Ok(None)  # type: ignore[return-value]
+    return Err(MountFailure.interpretation_required(position))
+
+
+def _declared_interpretation(
+    position: SemanticPosition, continuity: Any
+) -> "InterpretationIdentity | None":
+    """Steps 2–3 of the declared chain, in order, or ``None`` if neither answers."""
     declared = getattr(continuity, "declared_interpretation_at", None)
     if declared is not None:
         identity = declared(position)
         if identity is not None:
-            return Ok(InterpretationIdentity.of(identity))
-    elif getattr(continuity, "default_interpretation", None) is not None:
+            return InterpretationIdentity.of(identity)
+        return None
+    default = getattr(continuity, "default_interpretation", None)
+    if default is not None:
         # A continuity-shaped object without the query helper still answers the
         # one question that matters: what is declared here?
-        return Ok(InterpretationIdentity.of(continuity.default_interpretation))
+        return InterpretationIdentity.of(default)
+    return None
 
-    if getattr(continuity, "domain", None) is None and not _declares_any(continuity):
-        return Ok(None)  # type: ignore[return-value]
-    return Err(MountFailure.interpretation_required(position))
+
+def _is_legacy_exempt(continuity: Any) -> bool:
+    """The pre-G1 default: exempt iff the continuity names no domain and no
+    Checkpoint (i.e. it declares no interpretation environment at all).
+
+    This is *not* the contract any more — it is the implementation of the
+    ``None`` default. A continuity that wants the other reading declares it
+    explicitly via ``interpretation_requirement`` (G1).
+    """
+    return getattr(continuity, "domain", None) is None and not _declares_any(continuity)
 
 
 def _declares_any(continuity: Any) -> bool:

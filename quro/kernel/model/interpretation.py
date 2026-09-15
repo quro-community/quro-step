@@ -114,6 +114,25 @@ class StabilityContract(str, Enum):
     PINNED = "pinned"
 
 
+# ---------------------------------------------------------------------------
+# G1 — the declared boundary between "additive" (E6) and "must refuse" (E6a)
+# ---------------------------------------------------------------------------
+#: A continuity whose undeclared interpretation is treated as the legacy
+#: single-reading case: no declaration means *no identity*, never a fabricated
+#: one. This is the pre-G1 behaviour, preserved as an explicit declaration.
+LEGACY_EXEMPT = "legacy-exempt"
+
+#: A continuity that *must* declare an interpretation at every recoverable
+#: Position: an undeclared reading is refused explicitly
+#: (``MountFailure(InterpretationRequired)``), never exempted by heuristic.
+MUST_DECLARE = "must-declare"
+
+#: The closed vocabulary of G1's classification. This decision is a per-domain
+#: declaration, never a Kernel judgement (Closure 0 §8) — the Kernel only names
+#: the two options and honours whichever one is declared.
+INTERPRETATION_REQUIREMENTS = (LEGACY_EXEMPT, MUST_DECLARE)
+
+
 class UnknownInterpretation(Exception):
     """A declared ``InterpretationIdentity`` that no resolver can resolve.
 

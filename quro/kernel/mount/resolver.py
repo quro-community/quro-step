@@ -15,6 +15,15 @@ Kernel does not *require* a Protocol implementation: it duck-types the resolver
 above and keeps the shipped default a plain callable. :class:`DomainResolver` is
 offered as an explicit, names-only protocol for domains that want the surface
 declared in one place.
+
+**G4 — K16 is a resolver obligation, not a Kernel guarantee.** The Kernel
+provides only the two refusal *slots* (``UnknownInterpretation``,
+``CrossDomainInterpretation``) and maps them onto ``MountFailure`` kinds. The
+judgement "which domain does this identity belong to?" is entirely the domain
+resolver's, so the strength of the Kernel's "refusal, never substitution"
+guarantee is **bounded by resolver honesty**. This is stated here, in the
+domain-adapter contract, so that K16 is an obligation the upper layer must meet
+rather than a formality the Kernel merely asserts (see ``RESOLVER_OBLIGATIONS``).
 """
 
 from __future__ import annotations
@@ -25,6 +34,19 @@ from ..model.interpretation import InterpretationIdentity
 
 #: ``identity -> reading``. The only capability the Kernel requires.
 ResolveFn = Callable[[InterpretationIdentity], Any]
+
+#: G4 — the obligations K16 (cross-domain rejection) places on the domain
+#: resolver. The Kernel cannot enforce these; it can only name them, which is
+#: exactly the boundary G4 makes explicit.
+RESOLVER_OBLIGATIONS: "tuple[str, ...]" = (
+    "resolve(identity) either answers with the domain's own reading or raises "
+    "UnknownInterpretation / CrossDomainInterpretation explicitly — it never "
+    "substitutes a plausible default",
+    "a resolvable identity that belongs to another domain is refused as "
+    "CrossDomainInterpretation, not silently treated as local",
+    "fingerprint(resolved) is computed over the resolver's own declared coverage "
+    "only and never over-claims it (E12)",
+)
 
 
 @runtime_checkable
