@@ -33,7 +33,18 @@ MOUNT_LAWS = (
 
 BOUNDARY_LAWS = (
     Law("E1", "Domain Payload Non-Interference", "Domain payload cannot encode hidden Position/control decisions."),
-    Law("E2", "Update Non-Destructiveness", "Previously recoverable Positions remain recoverable after a successful update."),
+    Law(
+        "E2",
+        "Update Non-Destructiveness",
+        "Previously recoverable Positions remain recoverable after a successful update. "
+        "The formal form is the same law: update(C, A, prov) = Ok(C') => for every P, "
+        "isRecoverable(P, C) => isRecoverable(P, C'); otherwise Err(RecoverabilityViolation(P)). "
+        "The design doc spells that formal form E2' (v0.2 §16.3) and the prose form E2 "
+        "(v0.2 §20.9); they are one law, and the prime marks the quantified spelling rather "
+        "than a second obligation. Note what E2 does NOT constrain: it is a statement about "
+        "structural recoverability only. It entails no content-preservation law for any "
+        "information-reducing operation -- see E16, and the lemma that motivates it.",
+    ),
     Law("E3", "Failure Does Not Auto-Advance", "Failure does not implicitly invoke update or next-position establishment."),
     Law("E4", "Live-by-Default Re-entry", "mount(P, C) uses live/current Continuity unless an explicit pinned extension is introduced."),
     Law("E5", "Provenance Sufficiency", "Provenance must preserve Position + InstanceId for every Artifact occurrence."),
@@ -108,7 +119,52 @@ INTERPRETATION_LAWS = (
     ),
 )
 
-ALL_LAWS = MOUNT_LAWS + BOUNDARY_LAWS + INTERPRETATION_LAWS
+# -- Tier 2: laws the framework states, which the Kernel cannot enforce ---------
+#
+# E1-E13 above bind the Kernel itself and are checked by the K-suite. The two laws
+# below bind mechanisms that live ABOVE the Kernel -- a relation, a branch, a
+# return, a fold -- which the Kernel never reads, compares or resolves. They are
+# therefore stated here as obligations and conformance-checked elsewhere.
+#
+# This distinction is load-bearing, not clerical. The Kernel absorbs semantic
+# *constraints*, never domain *capabilities*: a law may bind the layer above the
+# Kernel without the Kernel gaining any implementation feature. A reader who
+# assumes every law in this file has a K-test will under-count what is checked;
+# a reader who assumes a law without a K-test is unverified will under-count what
+# is settled. Both laws below carry their conformance location explicitly.
+
+KERNEL_ADJACENT_LAWS = (
+    Law(
+        "E15",
+        "Verification-Judgement Separation Is Type-Generic",
+        "No function of Kernel-visible facts decides a domain judgement whose subject may "
+        "depend on a fact the function's input does not determine. Stated first for "
+        "InterpretationIdentity (E11-E13), the separation holds for every Kernel-adjacent "
+        "type: relations, branches, returns, folds. A Kernel-performable comparison is "
+        "never evidence that two things mean the same, and verification is never judgement. "
+        "Conformance: the Kernel enforces its half structurally by absence (K21); the "
+        "type-generic half is conformance-checked ABOVE the Kernel, by the milestone "
+        "closure that declared it.",
+    ),
+    Law(
+        "E16",
+        "Fold Preservation",
+        "For every declared-recoverable SemanticPosition P, a fold's own declaration (that it "
+        "happened, what it covered, what it summarized) and every fact its retention manifest "
+        "promises to retain must remain derivable from mount(P, C') -- through the mounted "
+        "state itself, the domain's declared projection, or an on-demand resource the domain "
+        "declares reachable -- after any fold applied to C. Representation may change; "
+        "required semantics may not. History is never mutated or deleted by a legitimate "
+        "fold. The obligation has TWO halves that fail independently, and a conformance check "
+        "must exercise each. Conformance lives ABOVE the Kernel, which never sees a fold "
+        "record: a reference implementation and a falsification matrix, recorded by the "
+        "milestone closure that declared this law. Nothing in this package may name that "
+        "package -- the experiment trees are disposable, and a kernel module that cites one "
+        "would depend on a directory the project is free to delete.",
+    ),
+)
+
+ALL_LAWS = MOUNT_LAWS + BOUNDARY_LAWS + INTERPRETATION_LAWS + KERNEL_ADJACENT_LAWS
 
 _LAW_INDEX = {item.id: item for item in ALL_LAWS}
 
@@ -121,4 +177,23 @@ def law(law_id: str) -> Law:
     return _LAW_INDEX[law_id.upper()]
 
 
-__all__ = ["ALL_LAWS", "BOUNDARY_LAWS", "INTERPRETATION_LAWS", "Law", "MOUNT_LAWS", "all_laws", "law"]
+def kernel_enforced_laws() -> "tuple[Law, ...]":
+    """The laws the Kernel itself enforces and the K-suite checks.
+
+    Tier 1 only. ``all_laws()`` includes the Tier-2 laws above, which bind the
+    layer above the Kernel and are conformance-checked there.
+    """
+    return MOUNT_LAWS + BOUNDARY_LAWS + INTERPRETATION_LAWS
+
+
+__all__ = [
+    "ALL_LAWS",
+    "BOUNDARY_LAWS",
+    "INTERPRETATION_LAWS",
+    "KERNEL_ADJACENT_LAWS",
+    "Law",
+    "MOUNT_LAWS",
+    "all_laws",
+    "kernel_enforced_laws",
+    "law",
+]
