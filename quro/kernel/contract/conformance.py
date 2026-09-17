@@ -12,7 +12,32 @@ from ..model.interpretation import InterpretationIdentity
 from ..model.position import SemanticPosition
 from ..model.state import ExecutionState
 
-#: Names the Kernel facade must never expose (design doc §18).
+#: Names the Kernel facade has been known to grow. **A diagnostic, not the
+#: guarantee** — and deliberately *not* widened when the guarantee was added,
+#: for two reasons.
+#:
+#: First, a blocklist of forbidden names cannot be completed. Three consecutive
+#: milestones each injected a facade method this list did not catch, and each
+#: reported the miss against whichever detector actually ran:
+#:
+#:     M2 measured  relate, reconcile                   not in the list
+#:     M3 measured  allocate, resolve_backtrack_target  not in the list
+#:     M4 measured  discard, resolve_fold_coverage      not in the list
+#:
+#: while ``backtrack``, ``fork``, ``fold`` and ``compact`` happened to be present.
+#: So a green control read as "the boundary is guarded" for the four names that
+#: were listed and said nothing about the ones that were not. Three measurements
+#: is a pattern, not bad luck: **the list only ever covers the names somebody
+#: thought of**, and adding the six names above would just move the boundary of
+#: what nobody has thought of yet.
+#:
+#: Second, three milestones' evidence records measure *this* list, by name, in
+#: their committed ``results/``. Widening it would silently invalidate those
+#: measurements rather than close the gap they describe.
+#:
+#: The gap closes by :func:`unexpected_facade_methods` — an allowlist, which is
+#: exact and cannot be outgrown. That is what K22/D5 asked for; this tuple stays
+#: as the historical diagnostic it always was.
 CONTROL_METHOD_NAMES = (
     "next",
     "steer",
@@ -22,6 +47,18 @@ CONTROL_METHOD_NAMES = (
     "compact",
     "fork",
     "fold",
+)
+
+#: The facade's **exact** public surface. Law E13's boundary and design doc §18's
+#: "deliberately small" are the same claim: three methods, and nothing else.
+#:
+#: Checking against this set is strictly stronger than checking against
+#: :data:`CONTROL_METHOD_NAMES`, because it does not require anyone to have
+#: predicted the name. A facade method nobody anticipated fails it.
+ALLOWED_FACADE_METHODS = (
+    "mount",
+    "execute",
+    "update",
 )
 
 #: Substrings that would indicate a semantic *judgement* operator (Law E13).
@@ -88,18 +125,68 @@ def judgement_parameters(target: Any) -> "tuple[str, ...]":
 
 
 def forbidden_control_methods(kernel: Any) -> "tuple[str, ...]":
-    """Which forbidden control methods (if any) leak onto the facade."""
+    """Which *named* forbidden control methods (if any) leak onto the facade.
+
+    A diagnostic: it says which known-forbidden name appeared, so a failure is
+    legible. It is not the guarantee — see :data:`CONTROL_METHOD_NAMES`.
+    """
     return tuple(name for name in CONTROL_METHOD_NAMES if hasattr(kernel, name))
 
 
+def facade_surface(kernel: Any) -> "tuple[str, ...]":
+    """The facade's public method surface, sorted.
+
+    ``type(kernel)`` is inspected rather than the instance, so an instance that
+    happens to carry a same-named attribute cannot mask a facade method, and a
+    facade method cannot be hidden by shadowing.
+    """
+    names = (
+        name
+        for name in dir(type(kernel))
+        if not name.startswith("_") and callable(getattr(type(kernel), name, None))
+    )
+    return tuple(sorted(names))
+
+
+def unexpected_facade_methods(kernel: Any) -> "tuple[str, ...]":
+    """Public methods on the facade that are not one of the three.
+
+    **This is the guarantee.** An allowlist cannot be outgrown by a name nobody
+    thought of — which is precisely how a blocklist of forbidden names failed
+    three milestones running (see :data:`CONTROL_METHOD_NAMES`). A facade that
+    grows *any* public method, for any operation, under any name, fails here.
+    """
+    allowed = set(ALLOWED_FACADE_METHODS)
+    return tuple(name for name in facade_surface(kernel) if name not in allowed)
+
+
 def facade_is_closed(kernel: Any) -> bool:
-    """True when the Kernel facade exposes no control authority (§18, §19)."""
-    return not forbidden_control_methods(kernel)
+    """True when the Kernel facade exposes no control authority (§18, §19).
+
+    Both checks, because they answer different questions and the allowlist alone
+    would not say *what* leaked.
+    """
+    return not forbidden_control_methods(kernel) and not unexpected_facade_methods(kernel)
+
+
+def facade_surface_is_exact(kernel: Any) -> bool:
+    """True when the facade is exactly the three methods — nothing added, nothing lost.
+
+    Compared as sets: :data:`ALLOWED_FACADE_METHODS` is in the canonical
+    mount → execute → update reading order, and the surface is sorted for stable
+    reporting. The order is documentation, not contract.
+    """
+    return set(facade_surface(kernel)) == set(ALLOWED_FACADE_METHODS)
 
 
 def assert_facade_closed(kernel: Any) -> None:
     leaked = forbidden_control_methods(kernel)
     assert not leaked, f"Kernel facade must not expose control methods: {leaked}"
+    unexpected = unexpected_facade_methods(kernel)
+    assert not unexpected, (
+        "Kernel facade must expose exactly "
+        f"{ALLOWED_FACADE_METHODS}; found unexpected public methods: {unexpected}"
+    )
 
 
 def assert_position_fidelity(state: ExecutionState, position: SemanticPosition) -> None:
@@ -142,9 +229,13 @@ def assert_interpretation_is_opaque(identity: "InterpretationIdentity | None") -
 
 
 __all__ = [
+    "ALLOWED_FACADE_METHODS",
     "CONTROL_METHOD_NAMES",
     "JUDGEMENT_TOKENS",
     "assert_facade_closed",
+    "facade_surface",
+    "facade_surface_is_exact",
+    "unexpected_facade_methods",
     "assert_interpretation_is_opaque",
     "assert_no_judgement_leakage",
     "assert_position_fidelity",

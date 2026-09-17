@@ -1,6 +1,7 @@
 """Contract surface: laws and conformance helpers (design doc §20, §21)."""
 
 from .conformance import (
+    ALLOWED_FACADE_METHODS,
     CONTROL_METHOD_NAMES,
     JUDGEMENT_TOKENS,
     assert_facade_closed,
@@ -9,9 +10,12 @@ from .conformance import (
     assert_position_fidelity,
     assert_recoverability_preserved,
     facade_is_closed,
+    facade_surface,
+    facade_surface_is_exact,
     forbidden_control_methods,
     judgement_leaks,
     judgement_parameters,
+    unexpected_facade_methods,
 )
 from .laws import (
     BOUNDARY_LAWS,
@@ -23,6 +27,7 @@ from .laws import (
 )
 
 __all__ = [
+    "ALLOWED_FACADE_METHODS",
     "BOUNDARY_LAWS",
     "CONTROL_METHOD_NAMES",
     "INTERPRETATION_LAWS",
@@ -36,8 +41,11 @@ __all__ = [
     "assert_position_fidelity",
     "assert_recoverability_preserved",
     "facade_is_closed",
+    "facade_surface",
+    "facade_surface_is_exact",
     "forbidden_control_methods",
     "judgement_leaks",
     "judgement_parameters",
     "law",
+    "unexpected_facade_methods",
 ]
