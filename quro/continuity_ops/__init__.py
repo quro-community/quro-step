@@ -57,10 +57,12 @@ from .channels import (
 )
 from .law import (
     ObligationResult,
+    check_all,
     check_fold_preservation,
     check_preservation,
     fold_carries_what_it_declared,
     fold_declares_its_sources,
+    operation_recorded,
 )
 from .operations import (
     OperationError,
@@ -91,12 +93,14 @@ __all__ = [
     "RECORD_KEY",
     "allocate",
     "backtrack",
+    "check_all",
     "check_fold_preservation",
     "check_preservation",
     "encode_record",
     "fold",
     "fold_carries_what_it_declared",
     "fold_declares_its_sources",
+    "operation_recorded",
     "read_fold_records",
     "read_records",
     "read_records_any",

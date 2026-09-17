@@ -85,6 +85,23 @@ class ContinuityRecord:
     def as_item(self) -> str:  # pragma: no cover - overridden
         raise NotImplementedError
 
+    def observations(self) -> "tuple[str, ...]":
+        """**Every** observation name this record declares. One definition, two users.
+
+        The preservation checks require a delivered set that contains these names; a
+        projection publishing a record's facts needs to produce exactly them. Both
+        sides call this method, so a check and its subject cannot drift.
+
+        They could, before. `FoldRecord` carried `as_item` / `summary_item` /
+        `coverage_item` and the fold check *called* them, while the two other checks
+        built `lineage:` / `inherited:` / `governed-by:` / `returned-to:` as f-strings
+        **inside the check function**. A consumer writing the projection the check
+        demanded had to copy those f-strings out of the check — and composition is
+        where that was found, because composition is the first thing that has to make
+        the two ends agree rather than exercising them one at a time.
+        """
+        return (self.as_item(),)
+
     @property
     def channel(self) -> str:
         """Which of the three realization channels carries this record."""
@@ -151,6 +168,17 @@ class BranchAllocation(ContinuityRecord):
         """The observation name — content, never identity, never a fingerprint."""
         return f"allocated:{self.child_branch}<-{self.parent_branch}@{self.declared_by}"
 
+    def observations(self) -> "tuple[str, ...]":
+        return (
+            self.as_item(),
+            f"lineage:{self.child_branch}<-{self.parent_branch}",
+            *(
+                f"inherited:{self.child_branch}:{position}"
+                for position in self.inherited_positions
+            ),
+            *(f"governed-by:{branch}={identity}" for branch, identity in self.bindings),
+        )
+
     def binding_of(self, branch: str) -> "str | None":
         for name, identity in self.bindings:
             if name == branch:
@@ -211,6 +239,9 @@ class BacktrackRecord(ContinuityRecord):
             f"@{self.declared_by}"
         )
 
+    def observations(self) -> "tuple[str, ...]":
+        return (self.as_item(), f"returned-to:{self.to_position}")
+
     def with_channel(self, channel: str, projection: str = PROJ_DOMAIN) -> "BacktrackRecord":
         return replace(self, realization_channel=channel, projection_policy=projection)
 
@@ -241,6 +272,39 @@ class FoldRecord(ContinuityRecord):
     projection_policy: str = PROJ_DOMAIN
 
     kind = "fold"
+
+    #: The **content-half** vocabulary: how a carried fact is named. The declaration half
+    #: is `observations()`; this is the other half, and it was the third instance of a
+    #: vocabulary minted inside a check rather than on the record — found by the same
+    #: reverse injection that found the first two, after the first fix looked complete.
+    RETAINED_PREFIX = "retained:"
+
+    @staticmethod
+    def retained_name(artifact_id: str, key: str, value: str) -> str:
+        """The observation name of one carried fact."""
+        return f"{FoldRecord.RETAINED_PREFIX}{artifact_id}:{key}={value}"
+
+    @classmethod
+    def retained_names(cls, carried: "Mapping[str, Mapping[str, str]]") -> "tuple[str, ...]":
+        """Every observation name a carried ledger materializes.
+
+        The inverse of what a fold writes: a consumer holding a ledger asks the record
+        what names it produces, rather than reproducing the format from a check.
+        """
+        return tuple(
+            cls.retained_name(artifact_id, key, value)
+            for artifact_id, facts in carried.items()
+            for key, value in facts.items()
+        )
+
+    @staticmethod
+    def artifact_of_retained(entry: str) -> "str | None":
+        """The Artifact a retained-fact name points at, or ``None`` if it is not one."""
+        if not entry.startswith(FoldRecord.RETAINED_PREFIX):
+            return None
+        remainder = entry[len(FoldRecord.RETAINED_PREFIX):]
+        artifact_id = remainder.split(":", 1)[0]
+        return artifact_id or None
 
     def __post_init__(self) -> None:
         for name in ("fold_id", "declared_by"):
@@ -285,6 +349,15 @@ class FoldRecord(ContinuityRecord):
 
     def coverage_item(self) -> str:
         return f"coverage:{self.fold_id}:{','.join(sorted(self.coverage))}"
+
+    def observations(self) -> "tuple[str, ...]":
+        """Both halves, named: the declaration and the facts it promised to carry."""
+        return (
+            self.as_item(),
+            self.summary_item(),
+            self.coverage_item(),
+            *self.retains,
+        )
 
     def declares(self, entry: str) -> bool:
         return entry in self.retains

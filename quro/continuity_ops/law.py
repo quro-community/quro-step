@@ -102,26 +102,19 @@ def check_preservation(
     be inventing an obligation.
     """
     if isinstance(record, BranchAllocation):
-        declared = (
-            record.as_item(),
-            f"lineage:{record.child_branch}<-{record.parent_branch}",
-            *(f"inherited:{record.child_branch}:{position}" for position in record.inherited_positions),
-            *(f"governed-by:{branch}={identity}" for branch, identity in record.bindings),
-        )
         return _check(
             "branch-allocation-preservation",
             record.as_item(),
-            declared,
+            record.observations(),
             delivered,
             detail="the parent's recoverable Positions remain recoverable in the child, "
             "and every declared binding survives the allocation",
         )
     if isinstance(record, BacktrackRecord):
-        declared = (record.as_item(), f"returned-to:{record.to_position}")
         return _check(
             "return-preservation",
             record.as_item(),
-            declared,
+            record.observations(),
             delivered,
             detail="the return is a forward step: the target Position is where "
             "execution now is, and nothing prior was mutated",
@@ -141,9 +134,11 @@ def fold_declares_its_sources(
     """
     present = set(available)
     named = {
-        entry.split(":", 2)[1]
-        for entry in record.retains
-        if entry.startswith("retained:") and entry.count(":") >= 2
+        artifact
+        for artifact in (
+            FoldRecord.artifact_of_retained(entry) for entry in record.retains
+        )
+        if artifact is not None
     }
     undeclared = tuple(sorted(artifact for artifact in named if artifact not in set(record.folded_from)))
     missing_sources = tuple(sorted(artifact for artifact in record.folded_from if artifact not in present))
@@ -167,11 +162,7 @@ def fold_carries_what_it_declared(
     durable content. A declared-retained fact is honoured only if the ledger holds it
     with that value.
     """
-    materializable = {
-        f"retained:{artifact_id}:{key}={value}"
-        for artifact_id, facts in carried.items()
-        for key, value in facts.items()
-    }
+    materializable = set(FoldRecord.retained_names(carried))
     return _check(
         "fold-carries-what-it-declared",
         record.as_item(),
@@ -201,34 +192,79 @@ def check_fold_preservation(
     which half failed, so a reader can tell "the fold kept nothing" from "nothing could
     read what it promised".
     """
-    declared = (
-        record.as_item(),
-        record.summary_item(),
-        record.coverage_item(),
-        *record.retains,
-    )
     return _check(
         "fold-preservation",
         record.as_item(),
-        declared,
+        record.observations(),
         delivered,
         detail="Law E16: the fold's declaration and its declared-retained facts remain "
         "derivable through a declared route",
     )
 
 
-def check_all(records: "Iterable[Any]", *, delivered: "Iterable[str]") -> "tuple[ObligationResult, ...]":
+def operation_recorded(kind: str) -> ObligationResult:
+    """The obligation an operation owes whether or not its record survived.
+
+    This exists because of a **vacuous pass**, found by composing the three operations
+    rather than exercising them one at a time.
+
+    ``check_all`` checks the obligations of the records it is given. Give it none and it
+    returns none — and a runner whose assertion is *"no obligation failed"* then reports
+    PASS for a continuity that performed three operations and recorded nothing at all. M4's
+    Audit A closed the neighbouring hole, where a law checking only a manifest's content
+    passed a fold that declared nothing; this is the same failure one level down, where
+    the subject is absent rather than empty and there is no manifest to check in the
+    first place.
+
+    It is the shape the module's own docstring warns about from the other side — *a fold
+    that declares a retention promise and carries nothing looks completely successful* —
+    and it is why ``expected`` is a parameter of :func:`check_all` rather than an
+    assumption: **only the caller knows what it performed.**
+    """
+    subject = f"<absent:{kind}>"
+    return ObligationResult(
+        obligation="operation-recorded",
+        subject=subject,
+        declared=(f"record:{kind}",),
+        delivered=(),
+        missing=(f"record:{kind}",),
+        detail=f"an {kind!r} operation was performed and left no readable record: no "
+        f"obligation could be checked, which is not the same as an obligation being met",
+    )
+
+
+def check_all(
+    records: "Iterable[Any]",
+    *,
+    delivered: "Iterable[str]",
+    expected: "Iterable[str]" = (),
+) -> "tuple[ObligationResult, ...]":
     """Every obligation the given records owe, against one delivered set.
 
-    The convenience a conformance runner wants; the per-record functions above are what
-    a caller uses when it needs to know *which* route supplied an answer.
+    ``expected`` names the operation kinds the caller knows it performed — ``"allocate"``,
+    ``"backtrack"``, ``"fold"``. Every expected kind that left no readable record
+    contributes an :func:`operation_recorded` failure instead of contributing silence.
+
+    Leave ``expected`` empty and the check is *records-in, verdicts-out*: it will not
+    invent an expectation, and it will pass an empty continuity. That is the right
+    default for a caller checking one record, and the wrong one for a conformance
+    runner — which is why the vacuity is named here rather than defaulted away.
+
+    The per-record functions above are what a caller uses when it needs to know *which*
+    route supplied an answer.
     """
+    records = tuple(records)
     results = []
     for record in records:
         if isinstance(record, FoldRecord):
             results.append(check_fold_preservation(record, delivered=delivered))
         elif isinstance(record, (BranchAllocation, BacktrackRecord)):
             results.append(check_preservation(record, delivered=delivered))
+
+    present = {getattr(record, "kind", "") for record in records}
+    for kind in sorted(set(expected)):
+        if kind not in present:
+            results.append(operation_recorded(kind))
     return tuple(results)
 
 
@@ -241,4 +277,5 @@ __all__ = [
     "check_preservation",
     "fold_carries_what_it_declared",
     "fold_declares_its_sources",
+    "operation_recorded",
 ]
