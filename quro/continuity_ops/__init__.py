@@ -1,0 +1,105 @@
+"""Upper-layer continuity operations: branch, return, fold.
+
+**Above the Kernel, not in it.** This package is the landing of four milestones'
+"Outcome B" verdicts — the operations the Kernel deliberately does not own
+(v0.2 §2, §39), expressed over the three methods it does.
+
+The finding it is built on:
+
+```text
+relation · return · branch · fold   =   mount(P, C) + a declared record in C
+
+All four are the same call. The Kernel does not branch on which one it is; it never
+reads the record. What differs above the boundary is (a) which record type is
+declared and (b) which projection the domain publishes.
+```
+
+So this is **one module and three record types**, not three subsystems — which is why
+it has one package rather than v0.2 §35's `quro/backtrack/`, `quro/fork/`,
+`quro/steering/` split. That list predates the isomorphism; the finding supersedes it.
+If an operation ever needs a shape the others do not, split it then, not before.
+
+What each operation owes, and what this package therefore provides:
+
+```text
+D1  RECEIPT   a domain-declared, Kernel-opaque record committed through update()
+D2  ROUTES    a declared (channel, projection) pair, or the fact is measurably
+              unreachable from a state-only continuation
+D3  LAW       a preservation obligation with BOTH halves — the declaration, and the
+              content promised
+D4  SOURCES   what the operation took from, declared, so it cannot satisfy a promise
+              by pointing at content it never claimed to compress
+```
+
+`law.py` states D3 for each record type as a checkable function. Nothing here is a
+Kernel norm: the Kernel is unchanged by this package, and design doc §8.2 forbids
+reading any choice in it as a Kernel recommendation. The choices it does make are
+recorded in `docs/design/Q4-Kernel-Upper-Layer-Decisions.md`, with the measurement
+that decided each.
+
+**Reverse dependencies are forbidden.** Nothing in `quro.kernel` may import this
+package; `tests/test_continuity_ops.py::ReverseDependencyIsForbidden` reads the source tree to prove it rather
+than trusting the claim.
+"""
+
+from __future__ import annotations
+
+from .channels import (
+    CH_ARTIFACT,
+    CH_PROVENANCE,
+    CH_RECORD,
+    CHANNELS,
+    encode_record,
+    read_fold_records,
+    read_records,
+    read_records_any,
+    records_reachable_from_state,
+)
+from .law import (
+    ObligationResult,
+    check_fold_preservation,
+    check_preservation,
+    fold_carries_what_it_declared,
+    fold_declares_its_sources,
+)
+from .operations import (
+    OperationError,
+    allocate,
+    backtrack,
+    fold,
+)
+from .records import (
+    RECORD_KEY,
+    BranchAllocation,
+    BacktrackRecord,
+    ContinuityRecord,
+    FoldRecord,
+    record_from_payload,
+)
+
+__all__ = [
+    "BranchAllocation",
+    "BacktrackRecord",
+    "CH_ARTIFACT",
+    "CH_PROVENANCE",
+    "CH_RECORD",
+    "CHANNELS",
+    "ContinuityRecord",
+    "FoldRecord",
+    "ObligationResult",
+    "OperationError",
+    "RECORD_KEY",
+    "allocate",
+    "backtrack",
+    "check_fold_preservation",
+    "check_preservation",
+    "encode_record",
+    "fold",
+    "fold_carries_what_it_declared",
+    "fold_declares_its_sources",
+    "read_fold_records",
+    "read_records",
+    "read_records_any",
+    "record_from_payload",
+    "records_reachable_from_state",
+]
