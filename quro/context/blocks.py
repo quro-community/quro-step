@@ -45,6 +45,19 @@ BLOCK_CONTENT = "content"
 
 BLOCK_KINDS = (BLOCK_NAMED, BLOCK_DECLARED, BLOCK_CONTENT)
 
+#: The **declared order** — the framework's cognitive ordering, as a sequence.
+#:
+#: `BLOCK_KINDS` is a vocabulary; this is that same tuple read as an *order*, and the
+#: distinction is not cosmetic. `Bound.applied_to` truncates from the **end** and never
+#: re-orders (its own docstring: *"a bound that shuffled would be making a selection
+#: decision it was not asked to make"*) — so under a bound **the order IS the priority**.
+#: A block that moves one position earlier survives a limit that would have dropped it.
+#:
+#: It is the same object as `BLOCK_KINDS`, not a second list: two tuples would be two
+#: vocabularies and they would drift (`LF-5`). Renaming it here is the whole point —
+#: naming the order as a *thing* is what lets a check exist about it.
+BLOCK_ORDER = BLOCK_KINDS
+
 
 @dataclass(frozen=True)
 class Block:
@@ -117,6 +130,7 @@ __all__ = [
     "BLOCK_CONTENT",
     "BLOCK_DECLARED",
     "BLOCK_KINDS",
+    "BLOCK_ORDER",
     "BLOCK_NAMED",
     "Block",
     "ContextBlocks",

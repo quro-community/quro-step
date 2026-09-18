@@ -86,6 +86,7 @@ from .blocks import (
     BLOCK_CONTENT,
     BLOCK_DECLARED,
     BLOCK_KINDS,
+    BLOCK_ORDER,
     BLOCK_NAMED,
     Block,
     ContextBlocks,
@@ -100,6 +101,7 @@ from .checks import (
     item_prefixes,
     minted_record_names,
     missing_members,
+    out_of_order,
     sources,
     unexercised_readers,
     unproduced_sources,
@@ -134,6 +136,8 @@ from .window import (
 )
 
 __all__ = [
+    "out_of_order",
+    "BLOCK_ORDER",
     "ArtifactStore",
     "BLOCK_CONTENT",
     "BLOCK_DECLARED",

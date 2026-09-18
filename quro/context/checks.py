@@ -26,7 +26,7 @@ from typing import Any, Iterable, Mapping
 
 from quro.continuity_ops import RECORD_TYPES, FoldRecord
 
-from .blocks import BLOCK_CONTENT, BLOCK_KINDS, ContextBlocks
+from .blocks import BLOCK_CONTENT, BLOCK_KINDS, BLOCK_ORDER, ContextBlocks
 from .view import ContextView, contract_members
 
 #: Functions inside ``src/quro/context/`` that are allowed to read Artifact payload
@@ -250,6 +250,41 @@ def contract_is_declared() -> bool:
     return bool(contract_members())
 
 
+
+def out_of_order(blocks: Any, *, order: "Iterable[str]" = BLOCK_ORDER) -> "tuple[tuple[int, str, str], ...]":
+    """Where a block sequence moves *backwards* through the declared order. ``()`` means conforming.
+
+    `BLOCK_ORDER` is not decoration: `Bound.applied_to` drops from the end, so the order
+    decides what survives a limit. A sequence that reorders silently changes what every
+    bounded consumer sees — and until this function existed, the reference view's own
+    docstring was the only statement of the order, with nothing enforcing it (`LL1`: *a
+    protocol written in prose is not a protocol*).
+
+    Returns ``(position, kind, why)`` per offending block rather than a boolean, because
+    "the context was out of order" without saying where is not enough to fix it.
+
+    Deliberately says nothing about *deviating* from the order. A domain that wants a
+    different order states which entry it deviates from and why — and there is nowhere
+    to state that yet, which is why this check covers conformance and the deviation half
+    is gated on a registration surface that does not exist (conception §5(a), §6.2 R3).
+    """
+    sequence = tuple(order)
+    index = {kind: position for position, kind in enumerate(sequence)}
+    found = []
+    highest = -1
+    for position, block in enumerate(getattr(blocks, "blocks", ()) or ()):
+        current = index.get(block.kind)
+        if current is None:
+            found.append((position, str(block.kind), f"not one of {sequence}"))
+            continue
+        if current < highest:
+            found.append(
+                (position, str(block.kind), f"follows a later kind ({sequence[highest]})")
+            )
+        highest = max(highest, current)
+    return tuple(found)
+
+
 __all__ = [
     "BOUND_CALL",
     "CONTENT_READERS",
@@ -259,6 +294,7 @@ __all__ = [
     "contract_is_declared",
     "item_prefixes",
     "minted_record_names",
+    "out_of_order",
     "missing_members",
     "sources",
     "unexercised_readers",
