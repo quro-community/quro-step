@@ -65,13 +65,20 @@ from .law import (
     operation_recorded,
 )
 from .operations import (
+    CARRIED_KEY,
+    SUMMARY_KEY,
     OperationError,
     allocate,
     backtrack,
     fold,
 )
 from .records import (
+    PROJECTIONS,
+    PROJ_DOMAIN,
+    PROJ_NONE,
+    PROJ_ON_DEMAND,
     RECORD_KEY,
+    RECORD_TYPES,
     BranchAllocation,
     BacktrackRecord,
     ContinuityRecord,
@@ -79,9 +86,21 @@ from .records import (
     record_from_payload,
 )
 
+#: The route vocabulary is published, not private.
+#:
+#: `PROJ_*` / `PROJECTIONS` and the two payload keys were module-level in
+#: `records.py` and `operations.py` and reachable only by importing those modules
+#: directly. That made the *declaration* of a route addressable and the *reading* of
+#: one not: a consumer had to reach past the public surface to learn which policies
+#: exist, or re-mint the constants — which is the duplicated-vocabulary defect this
+#: package records the cost of, one level up.
+#:
+#: A route that can be declared and not read is a route with one end. This is the
+#: other end, and publishing it changes no behaviour.
 __all__ = [
     "BranchAllocation",
     "BacktrackRecord",
+    "CARRIED_KEY",
     "CH_ARTIFACT",
     "CH_PROVENANCE",
     "CH_RECORD",
@@ -90,7 +109,13 @@ __all__ = [
     "FoldRecord",
     "ObligationResult",
     "OperationError",
+    "PROJECTIONS",
+    "PROJ_DOMAIN",
+    "PROJ_NONE",
+    "PROJ_ON_DEMAND",
     "RECORD_KEY",
+    "RECORD_TYPES",
+    "SUMMARY_KEY",
     "allocate",
     "backtrack",
     "check_all",
