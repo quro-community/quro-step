@@ -264,9 +264,13 @@ def out_of_order(blocks: Any, *, order: "Iterable[str]" = BLOCK_ORDER) -> "tuple
     "the context was out of order" without saying where is not enough to fix it.
 
     Deliberately says nothing about *deviating* from the order. A domain that wants a
-    different order states which entry it deviates from and why — and there is nowhere
-    to state that yet, which is why this check covers conformance and the deviation half
-    is gated on a registration surface that does not exist (conception §5(a), §6.2 R3).
+    different order states which entry it deviates from and why — and no domain has
+    wanted one yet. That is what the deviation half is gated on: a **consumer**, not a
+    surface. The declaration surfaces exist and are read (a continuity-level standing
+    declaration, and a record carrying `declared_by`; conception §5(a), corrected
+    2026-09-19), so this check covers conformance, and the deviation half stays gated
+    until a domain needs it. The trigger, and what would fire it, are in
+    `docs/design/Q4-Kernel-Context-Limits-and-Prompt-Discipline.md` §6.2 R3.
     """
     sequence = tuple(order)
     index = {kind: position for position, kind in enumerate(sequence)}
