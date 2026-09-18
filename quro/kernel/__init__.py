@@ -96,8 +96,24 @@ from .model import (
 )
 from .mount.interpretation import check_stability, resolve_interpretation
 from .mount.mounter import Mounter
-from .mount.resolver import DomainResolver, MappingResolver, resolver
+from .mount.resolver import DomainResolver, MappingResolver, resolved_fingerprint, resolver
 from .mount.structural import resolve_unit_at
+from .persistence.codec import (
+    COVERED_TYPES,
+    CodecError,
+    covered_field_names,
+    decode_continuity,
+    decode_model,
+    decode_position,
+    decode_state,
+    encode_continuity,
+    encode_model,
+    encode_position,
+    encode_state,
+    expected_keys,
+    extras_from,
+    out_of_band_fields,
+)
 
 __all__ = [
     "ALL_LAWS",
@@ -176,6 +192,20 @@ __all__ = [
     "judgement_leaks",
     "judgement_parameters",
     "unexpected_facade_methods",
+    "COVERED_TYPES",
+    "CodecError",
+    "covered_field_names",
+    "decode_continuity",
+    "decode_model",
+    "decode_position",
+    "decode_state",
+    "encode_continuity",
+    "encode_model",
+    "encode_position",
+    "encode_state",
+    "expected_keys",
+    "extras_from",
+    "out_of_band_fields",
     "law",
     "lost_recoverability",
     "ok",
