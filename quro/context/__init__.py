@@ -1,4 +1,4 @@
-"""Above-kernel context machinery: the read side of the route discipline.
+"""Above-kernel context machinery: the route discipline's read side, and its writer.
 
 **Above the Kernel, not in it.** This package is v0.2 §38's **phase 5** (`ArtifactStore`,
 `get_artifact`, `Window`) and **phase 6** (`ContextView`, `ContextBlocks`, `HINTS`,
@@ -67,9 +67,21 @@ no bound chosen     §3.3 makes the bounding half policy and register B-9 keeps 
                     gated on a job. The slot ships; its absence ships; a check forbids
                     the framework from choosing a value.
 no ranking          a judgement over domain meaning, which is E13's assignment.
-no codec            register B-10 stands. This package is deterministic over the
-                    continuity by construction, so it composes with whatever codec
-                    lands, and neither needs nor provides one.
+no codec            **corrected when the ledger landed.** This read "register B-10
+                    stands ... neither needs nor provides one", and B-10 had been
+                    discharged already: `quro/kernel/persistence/` ships the codec. What
+                    the paragraph *predicted* held — this package still neither needs
+                    nor provides one, it composes with the codec — but the sentence was
+                    still describing an open register entry for a closed gap, which is
+                    the defect shape `docs/STATE.md` records as a stale claim living in
+                    `src/`, where a domain author actually reads it.
+write side          `layout` and `ledger` are here, and they are the **write half of the
+                    same route** this package reads: `ArtifactStore` reads what a route
+                    declares reachable, and a store is what makes it durable. They add
+                    no second access path — the ledger moves the codec's own encoding and
+                    never touches an Artifact payload, which `content_reader_names`
+                    checks rather than takes on trust, so `CONTENT_READERS` is the same
+                    two entries it was before they landed.
 no Kernel law       nothing here changes the Kernel. `make laws` prints 22 before and
                     after; no new tier-1 or tier-2 law is minted.
 ```
@@ -114,6 +126,26 @@ from .hints import (
     HINTS,
     Hint,
 )
+from .layout import (
+    DATA_ROOT,
+    LEDGER_FILE,
+    TOOL,
+    Layout,
+    LayoutError,
+    component,
+    find_workdir,
+)
+from .ledger import (
+    LEDGER_BODIES,
+    LedgerError,
+    body_name,
+    declared_bodies,
+    join,
+    read_session,
+    session_id,
+    split,
+    write_session,
+)
 from .routes import (
     REFUSAL_KINDS,
     UNAVAILABLE,
@@ -139,6 +171,22 @@ __all__ = [
     "out_of_order",
     "BLOCK_ORDER",
     "ArtifactStore",
+    "DATA_ROOT",
+    "LEDGER_BODIES",
+    "LEDGER_FILE",
+    "Layout",
+    "LayoutError",
+    "LedgerError",
+    "TOOL",
+    "body_name",
+    "component",
+    "declared_bodies",
+    "find_workdir",
+    "join",
+    "read_session",
+    "session_id",
+    "split",
+    "write_session",
     "BLOCK_CONTENT",
     "BLOCK_DECLARED",
     "BLOCK_KINDS",
