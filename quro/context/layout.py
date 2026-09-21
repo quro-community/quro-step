@@ -43,6 +43,7 @@ WORKSPACE_DIR = "workspace"
 SESSION_DIR = "session"
 SOURCE_DIR = "source"
 BODIES_DIR = "artifacts"
+PLANS_DIR = "plans"
 ROUNDS_DIR = "rounds"
 
 #: The file a workspace states itself in — its domain, its reading declaration, its
@@ -51,7 +52,7 @@ ROUNDS_DIR = "rounds"
 #: be the silent-substitution shape this architecture refuses everywhere else.
 WORKSPACE_FILE = "workspace.json"
 
-#: The ledger — `(C, P)`, with artifact bodies held beside it rather than inside it.
+#: The ledger — `(C, P)` references, with artifact bodies and plan versions beside it.
 LEDGER_FILE = "ledger.json"
 
 #: A path component. Anchored, and the first character must be alphanumeric — which is
@@ -154,11 +155,19 @@ class Layout:
         return self.root / SESSION_DIR / component(session_id, what="a session id")
 
     def ledger(self, session_id: object) -> pathlib.Path:
-        """The small file a fresh process must have, and the only one it must have."""
+        """The small session root a fresh process follows to its declared durable values."""
         return self.session(session_id) / LEDGER_FILE
 
     def bodies(self, session_id: object) -> pathlib.Path:
         return self.session(session_id) / BODIES_DIR
+
+    def plans(self, session_id: object) -> pathlib.Path:
+        """The immutable plan versions a session ledger may reference."""
+        return self.session(session_id) / PLANS_DIR
+
+    def plan(self, session_id: object, name: object) -> pathlib.Path:
+        """One content-addressed plan version, named by the ledger's reference."""
+        return self.plans(session_id) / component(name, what="a plan version")
 
     def body(self, session_id: object, name: object) -> pathlib.Path:
         """One artifact body, by the name the ledger declared for it.
@@ -188,6 +197,7 @@ __all__ = [
     "LEDGER_FILE",
     "Layout",
     "LayoutError",
+    "PLANS_DIR",
     "ROUNDS_DIR",
     "SAFE_COMPONENT",
     "SESSION_DIR",

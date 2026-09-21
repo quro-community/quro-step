@@ -9,10 +9,12 @@ semantic state*) at the scale the thesis exists for.
 The split is the one the read side already names:
 
 ```text
-THE LEDGER   `(C, P)` without artifact bodies — small, rewritten whole, and the entire
-             set of bytes a fresh process must have
+THE LEDGER   `(C, P)` without artifact bodies or plan definitions — small, rewritten
+             whole, and references to immutable versions a fresh process can resolve
 THE BODIES   one file per artifact, addressed by a name the ledger declares, written
              once and never rewritten
+THE PLANS    one file per content-addressed plan version, referenced by branch and
+             written once and never rewritten
 ```
 
 ## What this module does not do, and the check that keeps it that way
@@ -59,6 +61,9 @@ from .layout import Layout
 #: *the bodies are elsewhere and the manifest says where*; anything else is refused.
 LEDGER_BODIES = "bodies"
 
+#: The marker for a plan slot that has been split out of the ledger.
+LEDGER_PLAN_VERSION = "version"
+
 #: How much of a digest names a file. Sixteen hex characters is 64 bits — far past the
 #: point where a collision inside one session's artifact set is a real possibility, and
 #: short enough to read.
@@ -85,6 +90,13 @@ def body_name(artifact_id: object) -> str:
     """
     digest = hashlib.sha256(str(artifact_id).encode("utf-8")).hexdigest()[:DIGEST_CHARS]
     return f"a{digest}.json"
+
+
+def plan_name(encoded_plan: Mapping[str, Any]) -> str:
+    """The immutable version name for one codec-encoded ``ExecutionPlan``."""
+    material = json.dumps(encoded_plan, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:DIGEST_CHARS]
+    return f"p{digest}.json"
 
 
 def session_id(seed: Any) -> str:
@@ -155,10 +167,34 @@ def declared_bodies(envelope: Mapping[str, Any]) -> "tuple[tuple[str, str], ...]
     return tuple(pairs)
 
 
+def declared_plans(envelope: Mapping[str, Any]) -> "tuple[tuple[str, str], ...]":
+    """``(branch, version name)`` pairs the ledger declares, in branch order.
+
+    A bare plan would decode successfully, but accepting one would make a session's
+    cost grow with every round again. The ledger therefore carries only stable version
+    references and refuses an unsplit plan definition.
+    """
+    inner = envelope.get("continuity")
+    if not isinstance(inner, Mapping):
+        raise LedgerError("this payload has no 'continuity'; it is not a codec envelope")
+    declared = inner.get("plans")
+    if not isinstance(declared, Mapping):
+        raise LedgerError("this payload has no plan references; it is not a split ledger")
+    pairs = []
+    for branch, reference in sorted(declared.items()):
+        if not isinstance(reference, Mapping) or set(reference) != {LEDGER_PLAN_VERSION}:
+            raise LedgerError(
+                f"the plan for branch {branch!r} is not a stable version reference: "
+                f"{reference!r}"
+            )
+        pairs.append((str(branch), str(reference[LEDGER_PLAN_VERSION])))
+    return tuple(pairs)
+
+
 def split(
     continuity: Any, position: Any
-) -> "tuple[dict, dict[str, dict]]":
-    """``(the ledger payload, body name -> encoded body)``. Pure.
+) -> "tuple[dict, dict[str, dict], dict[str, dict]]":
+    """``(ledger payload, artifact bodies, immutable plan versions)``. Pure.
 
     The codec's own :func:`encode_model` does the encoding; this separates what it
     produced. It is why nothing here reads a payload.
@@ -179,12 +215,23 @@ def split(
         manifest.append({"id": str(encoded["id"]), "body": name})
         bodies[name] = encoded
     inner["artifacts"] = {LEDGER_BODIES: manifest}
-    return {**envelope, "continuity": inner}, bodies
+    encoded_plans = inner.get("plans")
+    if not isinstance(encoded_plans, Mapping):
+        raise LedgerError("the codec's continuity encoding carries no plans mapping")
+    plans: "dict[str, dict]" = {}
+    references = {}
+    for branch, encoded in encoded_plans.items():
+        name = plan_name(encoded)
+        plans[name] = encoded
+        references[str(branch)] = {LEDGER_PLAN_VERSION: name}
+    inner["plans"] = references
+    return {**envelope, "continuity": inner}, bodies, plans
 
 
 def join(
     envelope: Mapping[str, Any],
     bodies: Mapping[str, Any],
+    plans: Mapping[str, Any],
     *,
     resolver: "Any | None" = None,
     factory: "Callable[..., Any] | None" = None,
@@ -202,8 +249,17 @@ def join(
             f"{sorted(missing)}. A declared body is not an optional one — supplying "
             "fewer would decode a continuity whose artifacts are silently absent."
         )
+    missing_plans = [name for _branch, name in declared_plans(envelope) if name not in plans]
+    if missing_plans:
+        raise LedgerError(
+            f"the ledger declares {len(missing_plans)} plan version(s) that were not supplied: "
+            f"{sorted(missing_plans)}. A plan reference is not optional during resume."
+        )
     inner = dict(envelope["continuity"])
     inner["artifacts"] = [bodies[name] for _id, name in pairs]
+    inner["plans"] = {
+        branch: plans[name] for branch, name in declared_plans(envelope)
+    }
     return decode_model({**envelope, "continuity": inner}, resolver=resolver, factory=factory)
 
 
@@ -227,7 +283,7 @@ def write_session(
     because the alternative is a silent wrong answer and this repository has no cheaper
     currency for that.
     """
-    envelope, bodies = split(continuity, position)
+    envelope, bodies, plans = split(continuity, position)
     directory = layout.bodies(session)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -247,6 +303,23 @@ def write_session(
         path.write_text(payload, encoding="utf-8")
         written.append(name)
 
+    plan_directory = layout.plans(session)
+    plan_directory.mkdir(parents=True, exist_ok=True)
+    plans_written, plans_unchanged = [], []
+    for name in sorted(plans):
+        path = layout.plan(session, name)
+        payload = json.dumps(plans[name], indent=1, sort_keys=True)
+        if path.exists():
+            if path.read_text(encoding="utf-8") != payload:
+                raise LedgerError(
+                    f"plan version {name!r} already holds different content at {path}. "
+                    "A version is immutable, so overwriting would hide corruption."
+                )
+            plans_unchanged.append(name)
+            continue
+        path.write_text(payload, encoding="utf-8")
+        plans_written.append(name)
+
     ledger = layout.ledger(session)
     ledger.parent.mkdir(parents=True, exist_ok=True)
     ledger.write_text(json.dumps(envelope, indent=1, sort_keys=True), encoding="utf-8")
@@ -256,6 +329,9 @@ def write_session(
         "artifacts": len(bodies),
         "bodies_written": tuple(written),
         "bodies_unchanged": tuple(unchanged),
+        "plans": len(plans),
+        "plans_written": tuple(plans_written),
+        "plans_unchanged": tuple(plans_unchanged),
     }
 
 
@@ -282,16 +358,35 @@ def read_session(
                 "ledger that outlived its bodies is not a partial reconstruction."
             )
         bodies[name] = json.loads(path.read_text(encoding="utf-8"))
-    return join(envelope, bodies, resolver=resolver, factory=factory)
+    plans = {}
+    for branch, name in declared_plans(envelope):
+        path = layout.plan(session, name)
+        if not path.exists():
+            raise LedgerError(
+                f"the ledger declares branch {branch!r} uses plan version {name!r} and "
+                f"{path} does not exist. A session cannot resume against an absent plan."
+            )
+        encoded = json.loads(path.read_text(encoding="utf-8"))
+        if plan_name(encoded) != name:
+            raise LedgerError(
+                f"plan version {name!r} does not match its content at {path}. A plan "
+                "version is content-addressed, so this is corruption rather than a "
+                "replacement a resume may accept."
+            )
+        plans[name] = encoded
+    return join(envelope, bodies, plans, resolver=resolver, factory=factory)
 
 
 __all__ = [
     "DIGEST_CHARS",
     "LEDGER_BODIES",
+    "LEDGER_PLAN_VERSION",
     "LedgerError",
     "body_name",
     "declared_bodies",
+    "declared_plans",
     "join",
+    "plan_name",
     "read_session",
     "session_id",
     "split",
