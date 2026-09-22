@@ -411,6 +411,18 @@ The implementation should therefore be read as:
 
 ---
 
+## Acknowledgements
+
+This skill is a **collaborative synthesis**, distilled from an extended multi-model working session on real architecture research, and subsequently extended with AI-driven research-governance and kernel-management practices contributed in a follow-up round. The method, its layers, its templates, and its governance extension emerged from the dialogue between:
+
+- **Claude / Sonnet-5** — Anthropic
+- **OpenAI / ChatGPT-5**
+- **DeepSeek / deepseek-v4-flash**
+
+Each contributed complementary strengths: the falsification-first framing and experimental discipline, the four-layer decomposition and the boundary-isolation test, the worked examples that stress-test the method against genuinely unrelated domains, and the kernel/checkpoint governance layer that keeps an AI-driven research program from running an MVP out of control. The result is intended as a shared, portable artifact for any team — human-led or AI-led — doing architecture work under real uncertainty.
+
+---
+
 ## License
 
 Proprietary — see `pyproject.toml`.
