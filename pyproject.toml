@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quro-step"
+version = "0.1.0"
+description = "Experimental scaffold for long-horizon AI problem solving around persisted semantic state"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
